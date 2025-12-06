@@ -14,6 +14,7 @@ export class MainParticleSystem extends BaseParticleSystem {
     const spawnRadius = this.config.spawnRadius;
     const [minSize, maxSize] = this.config.sizeRange;
     const { redGiantChance, blueChance } = this.config.temperatures;
+    const pulsarChance = this.config.pulsarChance || 0.002; // 0.2% пульсаров
 
     const geometry = new THREE.BufferGeometry();
 
@@ -23,6 +24,7 @@ export class MainParticleSystem extends BaseParticleSystem {
     const birthTimes = new Float32Array(count);
     const randoms = new Float32Array(count);
     const temperatures = new Float32Array(count);
+    const starTypes = new Float32Array(count); // Новый атрибут
 
     // Стратифицированное распределение температур
     const redCount = Math.floor(count * redGiantChance);
@@ -57,7 +59,6 @@ export class MainParticleSystem extends BaseParticleSystem {
       positions[i3 + 2] = r * Math.cos(phi);
 
       // Velocity: направление от центра (для взрыва)
-      // Для частиц в самом центре генерируем случайное направление
       let vx = positions[i3];
       let vy = positions[i3 + 1];
       let vz = positions[i3 + 2];
@@ -81,11 +82,18 @@ export class MainParticleSystem extends BaseParticleSystem {
       sizes[i] = minSize + Math.random() * (maxSize - minSize);
 
       // Birth time: распределяем равномерно по всему lifetime
-      // Это создаёт непрерывный поток частиц
       birthTimes[i] = Math.random() * (this.config.lifetime || 10.0);
 
       // Random для мерцания
       randoms[i] = Math.random();
+
+      // Star type: 0 = обычная, 1 = пульсар
+      starTypes[i] = Math.random() < pulsarChance ? 1.0 : 0.0;
+
+      // Пульсары чуть крупнее
+      if (starTypes[i] > 0.5) {
+        sizes[i] *= 1.5;
+      }
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -94,6 +102,7 @@ export class MainParticleSystem extends BaseParticleSystem {
     geometry.setAttribute('birthTime', new THREE.BufferAttribute(birthTimes, 1));
     geometry.setAttribute('random', new THREE.BufferAttribute(randoms, 1));
     geometry.setAttribute('temperature', new THREE.BufferAttribute(temperatures, 1));
+    geometry.setAttribute('starType', new THREE.BufferAttribute(starTypes, 1));
 
     return geometry;
   }
@@ -114,7 +123,8 @@ export class MainParticleSystem extends BaseParticleSystem {
         uNoiseScale: { value: this.config.noiseScale },
         uNoiseSpeed: { value: this.config.noiseSpeed },
         uMaxDistance: { value: this.config.maxDistance },
-        uLifetime: { value: this.config.lifetime || 8.0 }
+        uLifetime: { value: this.config.lifetime || 8.0 },
+        uTrailStrength: { value: this.config.trailStrength || 0.5 }
       },
       vertexShader: particlesVertexShader,
       fragmentShader: particlesFragmentShader,
@@ -129,6 +139,17 @@ export class MainParticleSystem extends BaseParticleSystem {
       this.material.uniforms.uTime.value = time;
       this.material.uniforms.uExplosionForce.value = params.explosionForce || 0;
       this.material.uniforms.uFlowFieldStrength.value = params.flowFieldStrength || 0;
+
+      // Trail strength зависит от фазы (сильнее при взрыве)
+      if (params.trailStrength !== undefined) {
+        this.material.uniforms.uTrailStrength.value = params.trailStrength;
+      }
+    }
+  }
+
+  setTrailStrength(value) {
+    if (this.material) {
+      this.material.uniforms.uTrailStrength.value = value;
     }
   }
 }
